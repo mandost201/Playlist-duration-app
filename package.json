@@ -1,0 +1,1 @@
+{"description":"YouTube playlist total duration calculator","engines":{"node":">=18"},"name":"playlist-duration-app","scripts":{"start":"node server.js"},"type":"module","version":"1.0.0"}
