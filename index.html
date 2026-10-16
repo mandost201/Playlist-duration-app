@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Playlist Duration Calculator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: #0f0f0f; color: #f1f1f1; min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center; padding: 32px 16px;
+  }
+  .wrap { width: 100%; max-width: 640px; }
+  h1 { font-size: 26px; margin-bottom: 6px; }
+  h1 .red { color: #ff0033; }
+  .sub { color: #aaa; font-size: 14px; margin-bottom: 24px; }
+  .card {
+    background: #1c1c1c; border: 1px solid #2c2c2c; border-radius: 14px;
+    padding: 20px; margin-bottom: 16px;
+  }
+  input[type=text] {
+    width: 100%; padding: 13px 14px; font-size: 15px; border-radius: 10px;
+    border: 1px solid #3a3a3a; background: #0f0f0f; color: #f1f1f1; outline: none;
+  }
+  input[type=text]:focus { border-color: #ff0033; }
+  button {
+    width: 100%; margin-top: 12px; padding: 13px; font-size: 16px; font-weight: 700;
+    border: none; border-radius: 10px; background: #ff0033; color: #fff; cursor: pointer;
+  }
+  button:disabled { opacity: .55; cursor: default; }
+  .hint { font-size: 12px; color: #888; margin-top: 10px; line-height: 1.6; }
+  .error {
+    display: none; background: #3a1116; border: 1px solid #7a2028; color: #ffb4b4;
+    padding: 12px 14px; border-radius: 10px; font-size: 14px; margin-bottom: 16px;
+  }
+  .result { display: none; }
+  .big-time {
+    font-size: 44px; font-weight: 800; letter-spacing: 1px; text-align: center;
+    margin: 6px 0 2px; font-variant-numeric: tabular-nums;
+  }
+  .big-time small { font-size: 15px; color: #aaa; font-weight: 400; letter-spacing: 0; }
+  .pl-title { text-align: center; color: #ddd; font-size: 15px; margin-bottom: 14px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+  .stat { background: #0f0f0f; border: 1px solid #2c2c2c; border-radius: 10px;
+    padding: 12px 8px; text-align: center; }
+  .stat b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 11px; color: #999; }
+  .warn { display:none; font-size: 12px; color: #e8b93e; margin-top: 10px; text-align:center; }
+  details { margin-top: 14px; }
+  summary { cursor: pointer; color: #aaa; font-size: 14px; }
+  .vlist { margin-top: 10px; max-height: 320px; overflow-y: auto; }
+  .vrow {
+    display: flex; justify-content: space-between; gap: 10px; padding: 8px 4px;
+    border-bottom: 1px solid #262626; font-size: 13px;
+  }
+  .vrow .t { color: #ddd; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vrow .d { color: #999; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  .spinner {
+    display: none; text-align: center; padding: 26px; color: #aaa; font-size: 14px;
+  }
+  .spinner .dot { display: inline-block; animation: blink 1.2s infinite; font-size: 22px; }
+  @keyframes blink { 0%,100% { opacity: .2; } 50% { opacity: 1; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="red">▶</span> Playlist Duration Calculator</h1>
+  <p class="sub">Kisi bhi YouTube playlist ka link paste karein — total duration hours : minutes : seconds mein nikal aayegi.</p>
+
+  <div class="card">
+    <input id="link" type="text" placeholder="https://www.youtube.com/playlist?list=..." autocomplete="off" />
+    <button id="go">Calculate Duration</button>
+    <p class="hint">Public playlists par kaam karta hai. Private ya deleted videos automatically skip ho jati hain (neeche count nazar aayegi).</p>
+  </div>
+
+  <div class="error" id="err"></div>
+  <div class="spinner" id="spin"><span class="dot">●</span><br/>Playlist parhi ja rahi hai...</div>
+
+  <div class="card result" id="res">
+    <div class="pl-title" id="ptitle"></div>
+    <div class="big-time"><span id="ftime">00:00:00</span><br/><small>hours : minutes : seconds</small></div>
+    <div class="stats">
+      <div class="stat"><b id="svideos">0</b><span>videos counted</span></div>
+      <div class="stat"><b id="sskipped">0</b><span>skipped / unavailable</span></div>
+      <div class="stat"><b id="savg">--</b><span>average duration</span></div>
+    </div>
+    <p class="warn" id="warn">⚠ Bohat lambi playlist hai — kuch videos count nahi ho sakin.</p>
+    <details>
+      <summary>Video-by-video breakdown dekhein</summary>
+      <div class="vlist" id="vlist"></div>
+    </details>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+async function calc() {
+  const link = $("link").value.trim();
+  $("err").style.display = "none";
+  $("res").style.display = "none";
+  if (!link) { showErr("Pehle playlist ka link paste karein."); return; }
+  $("spin").style.display = "block";
+  $("go").disabled = true;
+  try {
+    const r = await fetch("/api/duration?url=" + encodeURIComponent(link));
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || "Kuch ghalat ho gaya.");
+    $("ptitle").textContent = j.title;
+    $("ftime").textContent = j.formatted;
+    $("svideos").textContent = j.videoCount;
+    $("sskipped").textContent = j.skippedCount;
+    $("savg").textContent = j.averageFormatted;
+    $("warn").style.display = j.truncated ? "block" : "none";
+    $("vlist").innerHTML = j.videos.map(v =>
+      `<div class="vrow"><span class="t">${escapeHtml(v.title)}</span><span class="d">${v.text}</span></div>`
+    ).join("");
+    $("res").style.display = "block";
+  } catch (e) {
+    showErr(e.message);
+  } finally {
+    $("spin").style.display = "none";
+    $("go").disabled = false;
+  }
+}
+function showErr(m) { const e = $("err"); e.textContent = m; e.style.display = "block"; }
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+$("go").addEventListener("click", calc);
+$("link").addEventListener("keydown", (e) => { if (e.key === "Enter") calc(); });
+</script>
+</body>
+</html>
